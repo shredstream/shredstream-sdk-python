@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shredstream"
+version = "1.0.3"
+description = "Solana ShredStream SDK/Decoder for Python, enabling ultra-low latency Solana transaction streaming via UDP shreds from https://www.shredstream.com"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "ShredStream.com" }]
+readme = "README.md"
+dependencies = ["solders>=0.21"]
+keywords = ["solana", "shredstream", "shred", "stream", "decoder", "parser", "transactions", "grpc", "rpc", "websocket", "udp", "sdk", "mev", "hft", "bot", "defi", "sniping", "pumpfun", "copytrading", "blockchain", "on-chain", "jito", "crypto", "detection", "trading", "latency", "speed", "performance"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Networking",
+]
+
+[project.urls]
+Homepage = "https://shredstream.com"
+Repository = "https://github.com/shredstream/shredstream-sdk-python"
+
+[tool.setuptools.packages.find]
+where = ["src"]
