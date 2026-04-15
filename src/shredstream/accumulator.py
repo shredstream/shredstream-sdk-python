@@ -3,6 +3,7 @@ from __future__ import annotations
 from shredstream.decoder import BatchDecoder, Transaction
 
 _GAP_SKIP_THRESHOLD = 5
+_MAX_AWAITING_SKIPPED = 64
 
 
 class SlotAccumulator:
@@ -14,6 +15,8 @@ class SlotAccumulator:
         self._slot_complete: bool = False
         self._stall_count: int = 0
         self._decode_errors: int = 0
+        self._awaiting_batch_start: bool = False
+        self._awaiting_skipped: int = 0
 
     @property
     def slot_complete(self) -> bool:
@@ -45,6 +48,16 @@ class SlotAccumulator:
             payload, batch_complete, last_in_slot = self._pending.pop(self._next_index)
             self._next_index += 1
 
+            if self._awaiting_batch_start:
+                self._awaiting_skipped += 1
+                if batch_complete:
+                    self._awaiting_batch_start = False
+                    self._awaiting_skipped = 0
+                elif self._awaiting_skipped >= _MAX_AWAITING_SKIPPED:
+                    self._decode_errors += 1
+                    return all_txs
+                continue
+
             txs = self._decoder.push(payload)
             if self._decoder.had_error:
                 self._decode_errors += 1
@@ -66,6 +79,8 @@ class SlotAccumulator:
                 self._next_index = min(self._pending)
                 self._stall_count = 0
                 self._decoder.reset()
+                self._awaiting_batch_start = True
+                self._awaiting_skipped = 0
                 return self._drain()
 
         return all_txs

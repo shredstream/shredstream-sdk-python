@@ -3,6 +3,13 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 
+_MAX_TX_PER_ENTRY = 10_000
+_MAX_SIGNATURES_PER_TX = 64
+
+
+class _DecoderError(Exception):
+    pass
+
 
 @dataclass(slots=True)
 class Transaction:
@@ -52,6 +59,8 @@ def _try_parse_transaction(
     sig_count, consumed = _try_read_compact_u16(buf, off, length)
     if sig_count is None:
         return None
+    if sig_count > _MAX_SIGNATURES_PER_TX:
+        raise _DecoderError(f"corrupt sig_count: {sig_count} exceeds limit")
     off += consumed
 
     sigs: list[bytes] = []
@@ -145,7 +154,11 @@ class BatchDecoder:
     def push(self, payload: bytes) -> list[Transaction]:
         self._last_error = False
         self._buf.extend(payload)
-        return self._drain()
+        try:
+            return self._drain()
+        except Exception:
+            self._last_error = True
+            return []
 
     @property
     def had_error(self) -> bool:
@@ -183,6 +196,9 @@ class BatchDecoder:
             if off + 8 > length:
                 break
             tx_count = struct.unpack_from("<Q", buf, off)[0]
+            if tx_count > _MAX_TX_PER_ENTRY:
+                self._last_error = True
+                return transactions
             off += 8
 
             entry_txs: list[Transaction] = []
