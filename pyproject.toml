@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shredstream"
-version = "1.0.4"
+version = "1.0.5"
 description = "Solana ShredStream SDK/Decoder for Python, enabling ultra-low latency Solana transaction streaming via UDP shreds from https://www.shredstream.com"
 requires-python = ">=3.10"
 license = "MIT"
