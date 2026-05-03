@@ -7,3 +7,7 @@ src/*.egg-info/
 .venv/
 dist/
 build/
+target/
+Cargo.lock
+*.so
+*.abi3.so

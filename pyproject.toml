@@ -1,19 +1,32 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "shredstream"
-version = "1.0.5"
-description = "Solana ShredStream SDK/Decoder for Python, enabling ultra-low latency Solana transaction streaming via UDP shreds from https://www.shredstream.com"
-requires-python = ">=3.10"
-license = "MIT"
-authors = [{ name = "ShredStream.com" }]
+version = "2.0.0"
+description = "Solana ShredStream SDK for Python — PyO3 bindings to the Rust core, ultra-low latency UDP shred streaming."
 readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "ShredStream.com" }]
 dependencies = ["solders>=0.21"]
-keywords = ["solana", "shredstream", "shred", "stream", "decoder", "parser", "transactions", "grpc", "rpc", "websocket", "udp", "sdk", "mev", "hft", "bot", "defi", "sniping", "pumpfun", "copytrading", "blockchain", "on-chain", "jito", "crypto", "detection", "trading", "latency", "speed", "performance"]
+keywords = [
+    "solana", "shredstream", "shred", "stream", "decoder", "parser",
+    "transactions", "udp", "sdk", "mev", "hft", "bot", "defi",
+    "sniping", "blockchain", "latency",
+]
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
     "Topic :: Software Development :: Libraries",
     "Topic :: System :: Networking",
 ]
@@ -22,5 +35,12 @@ classifiers = [
 Homepage = "https://shredstream.com"
 Repository = "https://github.com/shredstream/shredstream-sdk-python"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+# NOTE: x86_64 wheels link against `reed-solomon-erasure` with the
+# `simd-accel` feature, which requires SSSE3 at runtime. Hosts older than
+# Nehalem (2008) will not run these wheels — build from source instead.
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "shredstream._native"
+python-source = "."
+strip = true

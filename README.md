@@ -41,18 +41,20 @@ Create a file `main.py`:
 
 ```python
 from shredstream import ShredListener
+from solders.transaction import VersionedTransaction
 import os
 
-# Bind to the UDP port configured on ShredStream.com
 PORT = int(os.environ.get("SHREDSTREAM_PORT", 8001))
-listener = ShredListener(port=PORT)
+listener = ShredListener.bind(PORT)
 
 # Decoded transactions — ready-to-use Solana transactions
-for slot, transactions in listener:
-    for tx in transactions:
-        print(f"slot {slot}: {tx.signature}")
-
+for slot, txs in listener:
+    for raw in txs:
+        tx = VersionedTransaction.from_bytes(raw)
+        print(f"slot {slot}: {tx.signatures[0]}")
 ```
+
+Each `raw` is the bincode wire-format encoding of a `VersionedTransaction`.
 
 Run it:
 
@@ -64,29 +66,67 @@ python3 main.py
 
 ### `ShredListener`
 
+- `ShredListener.bind(port: int) -> ShredListener` — Bind with defaults (64 MB recv buf, 3 slot window, FEC enabled)
+- `ShredListener.bind_with_options(port, options: ListenerOptions) -> ShredListener` — Custom configuration
+- `ShredListener.offline() -> ShredListener` — Bind on ephemeral port; drive via `handle_packet`
+- `ShredListener.from_fd(fd: int, options=None) -> ShredListener` — Adopt an existing UDP file descriptor
+- **Iterator protocol** — `for slot, txs in listener:` yields `(int, list[bytes])`
+- `listener.shreds() -> ShredIter` — Iterator yielding `RawShred` headers (no decode)
+- `listener.handle_packet(data: bytes) -> tuple[int, list[bytes]] | None` — Inject an externally-received UDP datagram
+- `listener.local_addr() -> str` — Bound socket address
+- `listener.close()` — Release the socket
+
+### `ListenerOptions`
+
 ```python
-ShredListener(port=8001, recv_buf=25*1024*1024, max_age=10)
+ListenerOptions(
+    recv_buf=64*1024*1024,
+    max_age=3,
+    busy_poll_us=200,
+    busy_poll_disabled=False,
+    pool_size=4096,
+    enable_fec=True,
+    disable_salvage_delivery=False,
+    accumulator=AccumulatorConfig(),
+)
 ```
 
-| Parameter  | Type  | Default | Description                      |
-|------------|-------|---------|----------------------------------|
-| `port`     | `int` | 8001    | UDP port to bind                 |
-| `recv_buf` | `int` | 25 MB   | Socket receive buffer size       |
-| `max_age`  | `int` | 10      | Maximum slot age before eviction |
+| Field | Default | Description |
+|-------|---------|-------------|
+| `recv_buf` | `64 MB` | `SO_RCVBUF` size |
+| `max_age` | `3` | Slot retention window |
+| `busy_poll_us` | `200` | Linux `SO_BUSY_POLL` µs |
+| `busy_poll_disabled` | `False` | Pass `True` to disable busy poll explicitly |
+| `pool_size` | `4096` | Number of 2 KiB buffers in the zero-copy pool |
+| `enable_fec` | `True` | Reed-Solomon recovery on dropped data shreds |
+| `disable_salvage_delivery` | `False` | Drop salvaged tail txs for lowest p99 |
+| `accumulator` | `AccumulatorConfig()` | FEC and stuck-batch tuning |
 
-#### Methods
+### `AccumulatorConfig`
 
-- **Iterator protocol** -- `for slot, transactions in listener:` yields decoded transactions as they arrive.
-- `listener.active_slots()` -- Number of slots currently being accumulated.
-- `listener.stop()` -- Closes the UDP socket.
+| Field | Default | Description |
+|-------|---------|-------------|
+| `max_fec_sets_per_slot` | `32` | Per-slot FEC buffer cap |
+| `stuck_batch_timeout_ms` | `50` | Force-finalize a stuck batch after this delay |
 
-### `Transaction`
+### Metrics
 
-| Field        | Type             | Description                                       |
-|--------------|------------------|---------------------------------------------------|
-| `signatures` | `list[bytes]`    | Raw 64-byte signatures                            |
-| `raw`        | `bytes`          | Full wire-format transaction bytes                 |
-| `signature`  | `str` (property) | First signature as base58 (lazy, via `solders`)    |
+Read-only `@property` accessors on `ShredListener`:
+
+| Group | Methods |
+|-------|---------|
+| **Throughput** | `data_shred_count_total`, `code_shred_count_total`, `bytes_received`, `slot_count` |
+| **Decoder** | `batches_decoded_streaming_total`, `batches_decoded_fallback_total`, `batches_skipped_total`, `decode_errors_total` |
+| **FEC** | `fec_recoveries_total`, `fec_recovery_failures_total`, `fec_sets_discarded_unused_total`, `fec_sets_evicted_early_total` |
+| **Unparseable** | `unparseable_packets`, `unparseable_too_short`, `unparseable_variant`, `unparseable_payload`, `unparseable_slot_range` |
+| **Slot lifecycle** | `slots_completed_total`, `slots_evicted_by_age`, `dropped_known_slots`, `harvested_batches_total`, `salvaged_tail_tx_total` |
+| **Tail control** | `batches_force_finalized_corrupted_total`, `batches_force_finalized_timeout_total` |
+| **Pool / I-O** | `pool_exhausted_count`, `last_io_error_kind`, `busy_poll_active` |
+
+### Helpers
+
+- `shredstream.classify_variant(byte: int) -> VariantKind | None` — Classify a shred variant byte
+- `shredstream.pin_current_thread_to_cpu(cpu_id: int) -> None` — Best-effort thread pinning. Linux: `sched_setaffinity`; macOS: hint; other: no-op
 
 ## 🎯 Use Cases
 
@@ -98,7 +138,7 @@ ShredStream.com SDK detects PumpFun token creations **~499ms before they appear 
 
 <img src="https://raw.githubusercontent.com/shredstream/shredstream-sdk-python/main/assets/shredstream.com_sdk_vs_pumpfun_live_feed.gif" alt="ShredStream.com SDK vs PumpFun live feed — ~499ms advantage" width="600">
 
-> [ShredStream.com](https://shredstream.com) provides a complete, optimized PumpFun token creation detection code available with our monthly subscription plan. Battle-tested, high-performance, ready to plug into your sniping pipeline. To get access, open a ticket on [Discord](https://discord.gg/4w2DNbTaWD) or reach out on Telegram [@shredstream](https://t.me/shredstream).
+> Ready-to-run example included: see [`examples/pumpfun_creates.py`](examples/pumpfun_creates.py). Run with `python3 examples/pumpfun_creates.py [port]`.
 
 ## ⚙️ Configuration
 
@@ -106,31 +146,16 @@ ShredStream.com SDK detects PumpFun token creations **~499ms before they appear 
 
 ```bash
 # Linux -- increase max receive buffer
-sudo sysctl -w net.core.rmem_max=33554432
+sudo sysctl -w net.core.rmem_max=67108864
+sudo sysctl -w net.core.busy_read=200
 
 # macOS
-sudo sysctl -w kern.ipc.maxsockbuf=33554432
+sudo sysctl -w kern.ipc.maxsockbuf=67108864
 ```
 
 ### Dependencies
 
-- `solders>=0.21` -- Required for base58 signature encoding (`tx.signature` property). Imported lazily on first access.
-
-## 💡 Examples
-
-### Filter by program
-
-```python
-from shredstream import ShredListener
-from solders.pubkey import Pubkey
-
-PUMP_FUN = bytes(Pubkey.from_string("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"))
-
-for slot, txs in ShredListener(port=8001):
-    for tx in txs:
-        if PUMP_FUN in tx.raw:
-            print(f"slot {slot}: {tx.signature}")
-```
+- `solders>=0.21` — Required to decode the bincode-encoded transactions yielded by the iterator.
 
 ## 🚀 Launch a Shred Stream
 
