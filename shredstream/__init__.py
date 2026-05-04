@@ -11,7 +11,7 @@ from shredstream._native import (
     pin_current_thread_to_cpu,
 )
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 __all__ = [
     "AccumulatorConfig",

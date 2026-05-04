@@ -71,7 +71,7 @@ fn serialize_txs(
     for tx in txs {
         let bytes = bincode::serialize(&tx)
             .map_err(|e| PyRuntimeError::new_err(format!("bincode serialize: {e}")))?;
-        out.push(PyBytes::new_bound(py, &bytes).into());
+        out.push(PyBytes::new(py, &bytes).into());
     }
     Ok(out)
 }
@@ -397,7 +397,7 @@ impl PyShredListener {
     ) -> PyResult<Option<(u64, Vec<Py<PyBytes>>)>> {
         let owned = data.to_vec();
         let slot = self.inner.clone();
-        let result = py.allow_threads(|| -> PyResult<Option<(u64, Vec<solana_transaction::versioned::VersionedTransaction>)>> {
+        let result = py.detach(|| -> PyResult<Option<(u64, Vec<solana_transaction::versioned::VersionedTransaction>)>> {
             catch(|| {
                 let mut guard = slot
                     .lock()
@@ -420,7 +420,7 @@ impl PyShredListener {
 
     fn __next__(&self, py: Python<'_>) -> PyResult<(u64, Vec<Py<PyBytes>>)> {
         let slot = self.inner.clone();
-        let outcome = py.allow_threads(|| -> Result<(u64, Vec<solana_transaction::versioned::VersionedTransaction>), Option<io::ErrorKind>> {
+        let outcome = py.detach(|| -> Result<(u64, Vec<solana_transaction::versioned::VersionedTransaction>), Option<io::ErrorKind>> {
             let res = panic::catch_unwind(AssertUnwindSafe(|| {
                 let mut guard = match slot.lock() {
                     Ok(g) => g,
@@ -609,7 +609,7 @@ impl PyShredIter {
 
     fn __next__(&self, py: Python<'_>) -> PyResult<PyRawShred> {
         let slot = self.slot.clone();
-        let outcome = py.allow_threads(|| -> Result<shredstream::listener::RawShred, Option<io::ErrorKind>> {
+        let outcome = py.detach(|| -> Result<shredstream::listener::RawShred, Option<io::ErrorKind>> {
             let res = panic::catch_unwind(AssertUnwindSafe(|| {
                 let mut guard = match slot.lock() {
                     Ok(g) => g,
@@ -672,10 +672,10 @@ fn _native(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRawShred>()?;
     m.add_function(wrap_pyfunction!(pin_current_thread_to_cpu, m)?)?;
     m.add_function(wrap_pyfunction!(classify_variant, m)?)?;
-    m.add("PanicError", py.get_type_bound::<PanicError>())?;
+    m.add("PanicError", py.get_type::<PanicError>())?;
     m.add(
         "ListenerClosedError",
-        py.get_type_bound::<ListenerClosedError>(),
+        py.get_type::<ListenerClosedError>(),
     )?;
     m.add("__version__", "2.0.0")?;
     Ok(())
